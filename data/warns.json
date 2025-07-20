@@ -1,0 +1,14 @@
+{
+  "123456789012345678": [
+    {
+      "reason": "Spam",
+      "date": "2025-07-20",
+      "moderator": "Mod#0001"
+    },
+    {
+      "reason": "Insultes",
+      "date": "2025-07-21",
+      "moderator": "Staff#0002"
+    }
+  ]
+}

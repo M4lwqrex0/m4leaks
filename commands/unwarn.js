@@ -1,5 +1,8 @@
 const {
-    EmbedBuilder
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -42,7 +45,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setTitle(`Liste des warns de ${user.tag}`)
-            .setDescription("Réponds avec le numéro du warn à retirer ou 'annuler'.")
+            .setDescription("Clique sur le bouton correspondant au warn à retirer.")
             .setColor(0x2f3136);
 
         userWarns.forEach((warn, index) => {
@@ -53,29 +56,52 @@ module.exports = {
             });
         });
 
-        await message.reply({ embeds: [embed] });
-
-        // Attendre la réponse de l'utilisateur
-        const filter = m => m.author.id === message.author.id;
-        const collector = message.channel.createMessageCollector({ filter, time: 30000, max: 1 });
-
-        collector.on('collect', m => {
-            if (m.content.toLowerCase() === 'annuler') {
-                return m.reply('❌ Annulé.');
-            }
-            const index = parseInt(m.content) - 1;
-            if (isNaN(index) || index < 0 || index >= userWarns.length) {
-                return m.reply('❌ Numéro invalide.');
-            }
-            userWarns.splice(index, 1);
-            warnsData[user.id] = userWarns;
-            fs.writeFileSync(warnsPath, JSON.stringify(warnsData, null, 2));
-            m.reply(`✅ Warn #${index + 1} retiré pour <@${user.id}>.`);
+        const row = new ActionRowBuilder();
+        userWarns.forEach((_, index) => {
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`unwarn_${user.id}_${index}`)
+                    .setLabel(`Warn ${index + 1}`)
+                    .setStyle(ButtonStyle.Danger)
+            );
         });
 
-        collector.on('end', collected => {
-            if (collected.size === 0) {
-                message.reply('⏰ Temps écoulé, commande annulée.');
+        row.addComponents(
+            new ButtonBuilder()
+                .setCustomId('cancel_unwarn')
+                .setLabel('Annuler')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        const sentMsg = await message.reply({ embeds: [embed], components: [row] });
+
+        const filter = i =>
+            i.user.id === message.author.id &&
+            (i.customId.startsWith('unwarn_') || i.customId === 'cancel_unwarn');
+        const collector = sentMsg.createMessageComponentCollector({ filter, time: 30000 });
+
+        collector.on('collect', async interaction => {
+            if (interaction.customId === 'cancel_unwarn') {
+                await interaction.reply({ content: '❌ Annulé.', ephemeral: true });
+                collector.stop();
+                return;
+            }
+            const parts = interaction.customId.split('_');
+            const warnIndex = parseInt(parts[2]);
+            if (isNaN(warnIndex) || warnIndex < 0 || warnIndex >= userWarns.length) {
+                await interaction.reply({ content: '❌ Numéro invalide.', ephemeral: true });
+                return;
+            }
+            userWarns.splice(warnIndex, 1);
+            warnsData[user.id] = userWarns;
+            fs.writeFileSync(warnsPath, JSON.stringify(warnsData, null, 2));
+            await interaction.reply({ content: `✅ Warn #${warnIndex + 1} retiré pour <@${user.id}>.`, ephemeral: true });
+            collector.stop();
+        });
+
+        collector.on('end', (_, reason) => {
+            if (reason !== 'messageDelete') {
+                sentMsg.edit({ components: [] });
             }
         });
     }

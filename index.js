@@ -73,12 +73,11 @@ client.once(Events.ClientReady, async () => {
         cachedInvites.set(guildId, invites);
     }
 
-    // 🕒 Mise à jour du status toutes les 5 secondes
     const guild = client.guilds.cache.get(config.guildId);
     if (!guild) return console.error("❌ Guild non trouvée via config.guildId");
 
     const updateVipStatus = async () => {
-        await guild.members.fetch(); // recharge le cache
+        await guild.members.fetch(); 
 
         const roleVip = guild.roles.cache.get(config.roles.vip);
         if (!roleVip) return console.warn("⚠️ Rôle VIP non trouvé");
@@ -94,7 +93,6 @@ client.once(Events.ClientReady, async () => {
         });
     };
 
-    // Démarre immédiatement puis chaque 5s
     await updateVipStatus();
     setInterval(updateVipStatus, 5000);
 });
@@ -171,11 +169,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
 const antiPath = path.join(__dirname, 'data', 'anticonfig.json');
 if (!fs.existsSync(antiPath)) fs.writeFileSync(antiPath, JSON.stringify({ antilink: false }, null, 2));
 
-// Gestion des commandes prefix et anti-link
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    // Commandes prefix
     if (message.content.startsWith(prefix)) {
         const args = message.content.slice(prefix.length).trim().split(/ +/);
         const commandName = args.shift().toLowerCase();
@@ -191,7 +187,6 @@ client.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // Anti-link
     const linkRegex = /(https?:\/\/|discord\.gg|discord\.com\/invite)/i;
     if (!linkRegex.test(message.content)) return;
 
@@ -214,7 +209,6 @@ client.on(Events.MessageCreate, async (message) => {
     }
 });
 
-// Gestion des boutons unwarn (optionnel, à adapter si tu gardes la logique des boutons)
 client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
         const warnsPath = path.join(__dirname, 'data', 'warns.json');

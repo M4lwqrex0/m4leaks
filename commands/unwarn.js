@@ -1,10 +1,5 @@
 const {
-    SlashCommandBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    EmbedBuilder,
-    PermissionFlagsBits
+    EmbedBuilder
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -13,20 +8,10 @@ const config = require('../config/config');
 const warnsPath = path.join(__dirname, '../data/warns.json');
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('unwarn')
-        .setDescription("Affiche tous les warns et propose de les retirer.")
-        .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
-        .addUserOption(option =>
-            option.setName('membre')
-                .setDescription('Le membre concerné')
-                .setRequired(true)
-        ),
-
-    async execute(interaction) {
-        const user = interaction.options.getUser('membre');
-        const memberRoles = interaction.member.roles.cache;
-
+    name: 'unwarn',
+    description: "Affiche tous les warns et propose de les retirer.",
+    async run(message, args, client) {
+        const memberRoles = message.member.roles.cache;
         const allowed = [
             config.roles.owner,
             config.roles.staff,
@@ -34,29 +19,30 @@ module.exports = {
         ].some(roleId => memberRoles.has(roleId));
 
         if (!allowed) {
-            return interaction.reply({
-                content: "❌ Tu n’as pas la permission d’utiliser cette commande.",
-                ephemeral: false
-            });
+            return message.reply("❌ Tu n’as pas la permission d’utiliser cette commande.");
         }
 
-        if (!fs.existsSync(warnsPath)) {
-            return interaction.reply({ content: "📁 Aucun fichier de warns trouvé.", ephemeral: false });
+        let user;
+        if (message.mentions.users.size > 0) {
+            user = message.mentions.users.first();
+        } else if (args[0]) {
+            user = await client.users.fetch(args[0]).catch(() => null);
+        }
+        if (!user) {
+            return message.reply("❌ Utilisateur non trouvé. Mentionne-le ou donne son ID.");
         }
 
+        if (!fs.existsSync(warnsPath)) fs.writeFileSync(warnsPath, '{}');
         const warnsData = JSON.parse(fs.readFileSync(warnsPath));
         const userWarns = warnsData[user.id];
 
         if (!userWarns || userWarns.length === 0) {
-            return interaction.reply({
-                content: `ℹ️ Aucun avertissement trouvé pour <@${user.id}>.`,
-                ephemeral: false
-            });
+            return message.reply(`ℹ️ Aucun avertissement trouvé pour <@${user.id}>.`);
         }
 
         const embed = new EmbedBuilder()
             .setTitle(`Liste des warns de ${user.tag}`)
-            .setDescription("Sélectionne un warn à retirer ci-dessous.")
+            .setDescription("Réponds avec le numéro du warn à retirer ou 'annuler'.")
             .setColor(0x2f3136);
 
         userWarns.forEach((warn, index) => {
@@ -67,27 +53,30 @@ module.exports = {
             });
         });
 
-        const row = new ActionRowBuilder();
-        userWarns.forEach((_, index) => {
-            row.addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`confirm_unwarn_${user.id}_${index}`)
-                    .setLabel(`Warn ${index + 1}`)
-                    .setStyle(ButtonStyle.Danger)
-            );
+        await message.reply({ embeds: [embed] });
+
+        // Attendre la réponse de l'utilisateur
+        const filter = m => m.author.id === message.author.id;
+        const collector = message.channel.createMessageCollector({ filter, time: 30000, max: 1 });
+
+        collector.on('collect', m => {
+            if (m.content.toLowerCase() === 'annuler') {
+                return m.reply('❌ Annulé.');
+            }
+            const index = parseInt(m.content) - 1;
+            if (isNaN(index) || index < 0 || index >= userWarns.length) {
+                return m.reply('❌ Numéro invalide.');
+            }
+            userWarns.splice(index, 1);
+            warnsData[user.id] = userWarns;
+            fs.writeFileSync(warnsPath, JSON.stringify(warnsData, null, 2));
+            m.reply(`✅ Warn #${index + 1} retiré pour <@${user.id}>.`);
         });
 
-        row.addComponents(
-            new ButtonBuilder()
-                .setCustomId('cancel_unwarn')
-                .setLabel('Annuler')
-                .setStyle(ButtonStyle.Secondary)
-        );
-
-        await interaction.reply({
-            embeds: [embed],
-            components: [row],
-            ephemeral: false
+        collector.on('end', collected => {
+            if (collected.size === 0) {
+                message.reply('⏰ Temps écoulé, commande annulée.');
+            }
         });
     }
 };
